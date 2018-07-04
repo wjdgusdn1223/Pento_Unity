@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <style>
+        .mapTable {
+            border-collapse:collapse;
+            margin: 0 auto;
+        }
+        .mapTable td { border:1px solid black; }
+        .functions{
+            text-align: center;
+            margin: 0 auto;
+            width: 600px;
+        }
+        .saveBox{
+            margin: 0 auto;
+        }
+        .canvasSt {
+            border: 2px solid whitesmoke;
+            float: left;
+        }
+        .interface {
+            margin: 0 auto;
+            width: 667px;
+            height: 610px;
+        }
+        .logBox{
+            border: 4px solid black;
+            background-color: darkslategray;
+            color: lawngreen;
+            font-size: small;
+            width: 200px;
+            height: 406px;
+            display:inline-block;
+            font-family: "Lucida Console", "Monaco", "Courier New", Courier, mono;
+        }
+        .logUl{
+            margin: 0px;
+            padding: 0px;
+            display: block;
+        }
+        .logLi{
+            list-style-type: none;
+            display: list-item;
+        }
+        .fps{
+            margin: 0 auto;
+            text-align: center;
+            font-size: larger;
+            color: aqua;
+        }
+        .readThis{
+            border: 4px solid black;
+            font-size: small;
+            background-color: darkcyan;
+            display:inline-block;
+            color: white;
+            font-family: "Lucida Console", "Monaco", "Courier New", Courier, mono;
+            width: 200px;
+            height: 186px;
+        }
+        .body{
+            background-color: #303030;
+        }
+    </style>
+    <script>
+        const MAP_SIZE = 2000; // 맵크기
+        const VIEWING_ANGLE_PI = Math.PI/2; // 시야각 PI로 표현
+        const VIEWING_ANGLE = 90;// 시야각
+        const UP = 0;
+        const LEFT = 1;
+        const DOWN = 2;
+        const RIGHT = 3; //방향 값 상수
+        const CANVAS_W = 455;
+        const CANVAS_H = 410; // 캔버스 가로 세로
+        const MAXIMUM_SIGHT = 1000; //최대 시야
+        const MAXIMUM_COLOR_SIGHT = 150; // 최대 시야(명암 넣기 용)
+        const MAXIMUN_DISTANCE_COLOR = 30; // 최대 거리일때의 명암
+        const MAXIMUM_WALL_HEIGHT = 900; // 최대 벽 높이 (거리가 0 일때)
+        var sight = Math.PI; // 시선
+        var playerX;
+        var playerY; //플레이어 좌표
+        var mapArr; // 맵 배열
+        var mapPencil = 0; // 벽 추가 제거
+        var liner = -1; // 줄 입력 구분
+        var mapline = Array.apply(null, new Array(2)).map(Number.prototype.valueOf,-1); // 줄의 처음 값과 끝 값
+        var keyCounts = Array.apply(null, new Array(4)).map(Boolean.prototype.valueOf,false); // 눌린 키 배열
+        var playerInterval; // 게임 인터벌
+        var isGamePlaying = 0; // 인터벌 중복 실행 방지 변수
+        var viewingDistance = Array.apply(null, new Array(91)).map(Number.prototype.valueOf,0); // 시야 각에 따른 거리
+        var viewingArray = Array.apply(null, new Array(91)).map(String.prototype.valueOf,""); // 시야 각에 따른 벽 좌표
+        var intervalIsOver; // 인터벌이 끝났는지 알려주는 변수
+        var browser = navigator.appVersion; // 브라우저 체크 변수
+        var liNum; //콘솔 리스트 한계 수
+        var fps = 0; // fps 값
+        var fpsCounter = Array.apply(null, new Array(2)).map(Number.prototype.valueOf,0); // fps 측정을 위한 값
+        var startT = 0; // fps 1초 측정 변수
+        //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        //테이블 생성 및 버튼 텍스트 에어리어 생성 - 맵 설정을 위한 테이블
+        function createMap(){
+            // 기능 들을 넣을 테이블 생성
+            var functionTable = document.createElement('table');
+            functionTable.setAttribute('class','functions');
+
+            var fTr = document.createElement('tr');
+            fTr.setAttribute('width','30');
+            //---------------------------------------------------------------------------------------
+
+            //맵 배열 생성
+            mapArr = Array.apply(null, new Array(MAP_SIZE)).map(Number.prototype.valueOf,0);
+            for(var tmp = 0; tmp < MAP_SIZE; tmp++)
+                mapArr[tmp] = Array.apply(null, new Array(MAP_SIZE)).map(Number.prototype.valueOf,0);
+            //---------------------------------------------------------------------------------------
+
+            //테이블 100*100으로 생성
+            var table = document.createElement('table');
+            table.setAttribute('width',100*15 + "");
+            //스타일 클래스로 적용
+            table.setAttribute('class','mapTable');
+            table.setAttribute('draggable','false');
+            //클릭 했을때 이벤트 리스너 적용
+            table.addEventListener('click',function (event) {
+                //클릭시 테이블 전체나 행 전체가 검은색이 되는 오류 발견 if문으로 처리
+                if(event.target.localName === 'td') {
+                    // 줄 입력이 아닐때 이벤트 처리
+                    if (liner === -1) {
+                        if(mapPencil === 0)
+                            event.target.style.backgroundColor = 'black';
+                        else
+                            event.target.style.backgroundColor = 'white';
+                    }
+                    // 줄 입력일때의 이벤트처리
+                    else {
+                        var yxValue = event.target.id.split(",");
+                        // 줄 입력 첫번째 기준 칸 생성
+                        if (mapline[0] === -1) {
+                            mapline[0] = yxValue[0] + "," + yxValue[1];
+                            for(var iCount = 0; iCount < 100; iCount++){
+                                if(document.getElementById(yxValue[0] + "," + iCount).style.backgroundColor !== 'black')
+                                    document.getElementById(yxValue[0] + "," + iCount).style.backgroundColor = '#9CB4FF';
+                                if(document.getElementById(iCount + "," + yxValue[1]).style.backgroundColor !== 'black')
+                                    document.getElementById(iCount + "," + yxValue[1]).style.backgroundColor = '#9CB4FF';
+                            }
+                            if(mapPencil === 0)
+                                event.target.style.backgroundColor = 'black';
+                            else
+                                event.target.style.backgroundColor = 'white';
+                        }
+                        // 줄입력 두번째 칸 입력
+                        else {
+                            var ml = mapline[0].split(",");
+
+                            for(var iCount2 = 0; iCount2 < 100; iCount2++) {
+                                if(document.getElementById(ml[0] + "," + iCount2).style.backgroundColor !== 'black')
+                                    document.getElementById(ml[0] + "," + iCount2).style.backgroundColor = 'white';
+                                if(document.getElementById(iCount2 + "," + ml[1]).style.backgroundColor !== 'black')
+                                    document.getElementById(iCount2 + "," + ml[1]).style.backgroundColor = 'white';
+                            }
+
+                            //가로줄
+                            if (ml[0] === yxValue[0]) {
+                                if (parseInt(ml[1]) > parseInt(yxValue[1])) {
+                                    var a = parseInt(ml[1]);
+                                    var b = parseInt(yxValue[1]);
+                                }
+                                else if (parseInt(ml[1]) < parseInt(yxValue[1])) {
+                                    var b = parseInt(ml[1]);
+                                    var a = parseInt(yxValue[1]);
+                                }
+                                else {
+                                    return;
+                                }
+                                for (var tmp = b; tmp <= a; tmp++) {
+                                    var td = document.getElementById(ml[0] + "," + tmp);
+
+                                    if(mapPencil === 0)
+                                        td.style.backgroundColor = 'black';
+                                    else
+                                        td.style.backgroundColor = 'white';
+                                }
+                                mapline[0] = -1;
+                                mapline[1] = -1;
+                            }
+                            //세로줄
+                            else if (ml[1] === yxValue[1]) {
+                                if (parseInt(ml[0]) > parseInt(yxValue[0])) {
+                                    var a = parseInt(ml[0]);
+                                    var b = parseInt(yxValue[0]);
+                                }
+                                else if (parseInt(ml[0]) < parseInt(yxValue[0])) {
+                                    var b = parseInt(ml[0]);
+                                    var a = parseInt(yxValue[0]);
+                                }
+                                else {
+                                    return;
+                                }
+                                for (var tmp = b; tmp <= a; tmp++) {
+                                    var td = document.getElementById(tmp + "," + ml[1]);
+                                    if(mapPencil === 0)
+                                        td.style.backgroundColor = 'black';
+                                    else
+                                        td.style.backgroundColor = 'white';
+                                }
+                                mapline[0] = -1;
+                                mapline[1] = -1;
+                            }
+                            // 가로줄도 세로줄도 아닐때 첫번째 칸 기준 생성
+                            else {
+                                mapline[0] = yxValue[0] + "," + yxValue[1];
+
+                                for(var iCount2 = 0; iCount2 < 100; iCount2++) {
+                                    if(document.getElementById(ml[0] + "," + iCount2).style.backgroundColor !== 'black')
+                                        document.getElementById(ml[0] + "," + iCount2).style.backgroundColor = 'white';
+                                    if(document.getElementById(iCount2 + "," + ml[1]).style.backgroundColor !== 'black')
+                                        document.getElementById(iCount2 + "," + ml[1]).style.backgroundColor = 'white';
+                                }
+
+                                for(var iCount3 = 0; iCount3 < 100; iCount3++) {
+                                    if(document.getElementById(yxValue[0] + "," + iCount3).style.backgroundColor !== 'black')
+                                        document.getElementById(yxValue[0] + "," + iCount3).style.backgroundColor = '#9CB4FF';
+                                    if(document.getElementById(iCount3 + "," + yxValue[1]).style.backgroundColor !== 'black')
+                                        document.getElementById(iCount3 + "," + yxValue[1]).style.backgroundColor = '#9CB4FF';
+                                }
+
+                                if(mapPencil === 0)
+                                    event.target.style.backgroundColor = 'black';
+                                else
+                                    event.target.style.backgroundColor = 'white';
+                            }
+                        }
+                    }
+                }
+            });
+            //--------------------------------------------------------------------------------
+
+            //테이블 생성
+            var tbody = document.createElement('tbody');
+            for(tmp = 0; tmp < 100; tmp++){
+                var tr = document.createElement('tr');
+                tr.setAttribute('height','15');
+
+                for(var tmp2 = 0; tmp2 < 100; tmp2++){
+                    var td = document.createElement('td');
+                    td.setAttribute('draggable','false');
+                    td.setAttribute('id',tmp + "," + tmp2);
+                    tr.appendChild(td);
+                }
+                tbody.appendChild(tr);
+            }
+            table.appendChild(tbody);
+            //-----------------------------------------------------------------------------
+
+            // 벽 추가 이벤트
+            var inputWall = document.createElement('input');
+            inputWall.setAttribute('type','button');
+            inputWall.setAttribute('value','벽 추가');
+            inputWall.addEventListener('click',function () {
+                mapPencil = 0;
+            });
+
+            var fTd = document.createElement('td');
+            fTd.appendChild(inputWall);
+            fTr.appendChild(fTd);
+            //----------------------------------------------------------------------------
+
+            // 벽 제거
+            var deleteWall = document.createElement('input');
+            deleteWall.setAttribute('type','button');
+            deleteWall.setAttribute('value','벽 제거');
+            deleteWall.addEventListener('click',function () {
+                mapPencil = -1;
+            });
+
+            fTd = document.createElement('td');
+            fTd.appendChild(deleteWall);
+            fTr.appendChild(fTd);
+            //---------------------------------------------------------------------------
+
+            // 줄 입력 켜기/끄기
+            var lineWall = document.createElement('input');
+            lineWall.setAttribute('type','button');
+            lineWall.setAttribute('value','벽 liner on/off');
+            lineWall.addEventListener('click',function () {
+                if(liner === -1)
+                    liner = 0;
+                else
+                    liner = -1;
+            });
+
+            fTd = document.createElement('td');
+            fTd.appendChild(lineWall);
+            fTr.appendChild(fTd);
+            //---------------------------------------------------------------------------
+
+            // 저장하기
+            var makeSave = document.createElement('input');
+            makeSave.setAttribute('type','button');
+            makeSave.setAttribute('value','저장하기');
+            makeSave.addEventListener('click',function () {
+                var st = document.getElementById('saveText');
+                var saveString = "";
+
+                for(var tmp = 0; tmp < 100; tmp++) {
+                    for (var tmp2 = 0; tmp2 < 100; tmp2++) {
+                        if(document.getElementById(tmp + "," + tmp2).style.backgroundColor === 'black')
+                            saveString += 1 + " ";
+                        else
+                            saveString += 0 + " ";
+                    }
+                }
+                st.value = saveString;
+            });
+
+            fTd = document.createElement('td');
+            fTd.appendChild(makeSave);
+            fTr.appendChild(fTd);
+            //---------------------------------------------------------------------------
+
+            // 저장 텍스트 박스 추가
+            var saveText = document.createElement('input');
+            saveText.setAttribute('type','text');
+            saveText.setAttribute('size',10 + "");
+            saveText.setAttribute('value','맵 코드');
+            saveText.setAttribute('id','saveText');
+
+            fTd = document.createElement('td');
+            fTd.appendChild(saveText);
+            fTr.appendChild(fTd);
+            //---------------------------------------------------------------------------
+
+            // 불러오기
+            var loadSave = document.createElement('input');
+            loadSave.setAttribute('type','button');
+            loadSave.setAttribute('value','불러오기');
+            loadSave.addEventListener('click',function () {
+                var st = document.getElementById('saveText');
+                var stArr = st.value.split(" ");
+
+                if(stArr.length === 10000) {
+                    alert("유효하지 않은 코드 값입니다.");
+                    return;
+                }
+
+                var count = 0;
+
+                for(var tmp = 0; tmp < 100; tmp++) {
+                    for (var tmp2 = 0; tmp2 < 100; tmp2++, count++) {
+                        var td = document.getElementById(tmp + "," + tmp2);
+                        if(stArr[count] === '1')
+                            td.style.backgroundColor = 'black';
+                        else if(stArr[count] === '0')
+                            td.style.backgroundColor = 'white';
+                        else{
+                            alert("유효하지 않은 코드 값입니다.");
+                            return;
+                        }
+                    }
+                }
+            });
+
+            fTd = document.createElement('td');
+            fTd.appendChild(loadSave);
+            fTr.appendChild(fTd);
+            //---------------------------------------------------------------------------
+
+            // 초기화
+            var whiteTable = document.createElement('input');
+            whiteTable.setAttribute('type','button');
+            whiteTable.setAttribute('value','초기화');
+            whiteTable.addEventListener('click',function () {
+                for(var tmp = 0; tmp < 100; tmp++) {
+                    for (var tmp2 = 0; tmp2 < 100; tmp2++) {
+                        var td = document.getElementById(tmp + "," + tmp2);
+                        td.style.backgroundColor = 'white';
+                    }
+                }
+            });
+
+            fTd = document.createElement('td');
+            fTd.appendChild(whiteTable);
+            fTr.appendChild(fTd);
+            //---------------------------------------------------------------------------
+
+            // 맵 생성 - 배열에 만들어진 맵 삽입 후 화면 초기화
+            var mapCreater = document.createElement('input');
+            mapCreater.setAttribute('type','button');
+            mapCreater.setAttribute('value','맵 생성');
+            mapCreater.addEventListener('click',function () {
+                var blackOrWhite;
+
+                for(var tmp = 0; tmp < 100; tmp++) {
+                    for (var tmp2 = 0; tmp2 < 100; tmp2++) {
+                        var td = document.getElementById(tmp + "," + tmp2);
+                        if(td.style.backgroundColor === 'black')
+                            blackOrWhite = parseInt(Math.random()*5+1);
+                        else
+                            blackOrWhite = 0;
+
+                        for(var tmp3 = 0; tmp3 < MAP_SIZE/100; tmp3++){
+                            for(var tmp4 = 0; tmp4 < MAP_SIZE/100; tmp4++){
+                                mapArr[tmp*MAP_SIZE/100 + tmp3][tmp2*MAP_SIZE/100 + tmp4] = blackOrWhite;
+                            }
+                        }
+                    }
+                }
+
+                for(var iCount = body.childNodes.length-1; iCount >= 0 ; iCount--)
+                    body.removeChild(body.childNodes[iCount]);
+
+                mapMain();
+            });
+
+            fTd = document.createElement('td');
+            fTd.appendChild(mapCreater);
+            fTr.appendChild(fTd);
+            //---------------------------------------------------------------------------
+
+            // 기능 테이블 및 맵 테이블 추가
+            functionTable.appendChild(fTr);
+            body.appendChild(functionTable);
+            body.appendChild(table);
+            //---------------------------------------------------------------------------
+        }
+        //##########################################################################################
+
+        //플레이 할때 필요한 캔버스 및 이벤트들 생성, 플레이어 위치 생성
+        function mapMain(){
+            // 브라우저 인식
+            if(browser !== null) {
+                var browserCheck = browser.split("Chrome");
+
+                if (browserCheck.length === 2)
+                    liNum = 22;
+                else if (browserCheck.length === 1)
+                    liNum = 29;
+                else
+                    liNum = 22;
+            }  else
+                liNum = 22;
+            //-------------------------------------------------------------------------------------
+
+
+            // 배경색 스타일 적용
+            body.setAttribute('class','body');
+            //--------------------------------------------------------------------------------------
+
+            // 게임 인터페이스를 감쌀 태그 엘리먼트 객체 생성
+            var Ginterface = document.createElement('div');
+            Ginterface.setAttribute('class','interface');
+            Ginterface.setAttribute('id','3Dinterface');
+
+            // 캔버스 생성
+            var canvas = document.createElement('canvas');
+            canvas.setAttribute('width',CANVAS_W + "");
+            canvas.setAttribute('height',CANVAS_H + "");
+            canvas.setAttribute('class','canvasSt');
+            canvas.setAttribute('id','canvas');
+            Ginterface.appendChild(canvas);
+            //--------------------------------------------------------------------------------------
+
+            // trace log 생성
+            var traceLogBox = document.createElement('div');
+            traceLogBox.setAttribute('class','logBox');
+
+            var traceLogUl = document.createElement('ul');
+            traceLogUl.setAttribute('id','logUl');
+            traceLogUl.setAttribute('class','logUl');
+
+            traceLogBox.appendChild(traceLogUl);
+            Ginterface.appendChild(traceLogBox);
+            //--------------------------------------------------------------------------------------
+
+            //플레이어 위치 생성
+            while(true){
+                playerX = parseInt(Math.random()*1000);
+                playerY = parseInt(Math.random()*1000);
+
+                if(mapArr[playerY][playerX] === 0)
+                    break;
+            }
+            //--------------------------------------------------------------------------------------
+
+            // 각도 별 거리 측정 그래프 생성
+            var graphCanvas = document.createElement('canvas');
+            graphCanvas.setAttribute('width',CANVAS_W + "");
+            graphCanvas.setAttribute('height',600 - CANVAS_H + "");
+            graphCanvas.setAttribute('class','canvasSt');
+            graphCanvas.setAttribute('id','graphCanvas');
+            Ginterface.appendChild(graphCanvas);
+            //--------------------------------------------------------------------------------------
+
+            // 설명 div 생성
+            var readThis = document.createElement('div');
+            readThis.setAttribute('class','readThis');
+            readThis.innerHTML = "좌측 그래프 = 거리 그래프 <br>" +
+                "수치(distance) =  0 ~ 1000<br>" +
+                "초과거리 = 1000(default) <br>" +
+                "<br>blue -> red = near -> far<br>" +
+                "<br>메시지가 콘솔에 맞지 않을시<br>" +
+                "<br>스페이스 바 입력해 조정<br>" +
+                "<br>크롬과 익스플로러에만 최적화" +
+                "<br>확대/축소 값은 100%로 최적화";
+            Ginterface.appendChild(readThis);
+            //--------------------------------------------------------------------------------------
+
+            // fps 표시 란 생성
+            var fpsViewer = document.createElement('div');
+            fpsViewer.setAttribute('width',667 + "");
+            fpsViewer.setAttribute('height',10 + "");
+            fpsViewer.setAttribute('class','fps');
+            fpsViewer.setAttribute('id','fpsViewer');
+            fpsViewer.innerHTML = '0 fps';
+            Ginterface.appendChild(fpsViewer);
+            //--------------------------------------------------------------------------------------
+
+            body.appendChild(Ginterface);
+
+            //로그 생성
+            plusLog("캔버스 설정 완료");
+            plusLog("로그 콘솔 생성 완료");
+            if(browser.split('Chrome').length === 2)
+                plusLog("크롬 브라우저 인식 완료");
+            else
+                plusLog("인터넷 브라우저 인식 완료");
+            plusLog("그래프 캔버스 생성 완료");
+            //--------------------------------------------------------------------------------------
+
+            // 방향키 이벤트
+            body.addEventListener('keydown',function (event) {
+                if (event.keyCode === 87)
+                    keyCounts[UP] = true;
+                else if (event.keyCode === 65)
+                    keyCounts[LEFT] = true;
+                else if (event.keyCode === 83)
+                    keyCounts[DOWN] = true;
+                else if (event.keyCode === 68)
+                    keyCounts[RIGHT] = true;
+                else if (event.keyCode === 32) {
+                    //바꾸기
+                    liNum++;
+                    if(liNum === 30)
+                        liNum = 10;
+
+                    var logUl = document.getElementById('logUl');
+                    for(var tmp = logUl.children.length-1; tmp >= 0 ; tmp--)
+                        logUl.removeChild(logUl.children[tmp]);
+
+                    //로그 생성
+                    plusLog('콘솔 메시지 줄 개수 : ' + liNum);
+                    //--------------------------------------------------------------------------------------
+                }
+                console.log(keyCounts);
+                mapPlay();
+            });
+            body.addEventListener('keyup',function (event) {
+                if(event.keyCode === 87)
+                    keyCounts[UP] = false;
+                else if(event.keyCode === 65)
+                    keyCounts[LEFT] = false;
+                else if(event.keyCode === 83)
+                    keyCounts[DOWN] = false;
+                else if(event.keyCode === 68)
+                    keyCounts[RIGHT] = false;
+                console.log(keyCounts);
+
+                if(keyCounts[UP] === false &&
+                    keyCounts[LEFT] === false &&
+                    keyCounts[DOWN] === false &&
+                    keyCounts[RIGHT] === false) {
+                    var interverQuit = setInterval(function (){
+                        if(intervalIsOver === 1) {
+                            clearInterval(playerInterval);
+                            isGamePlaying = 0;
+                            fps = 0;
+                            document.getElementById('fpsViewer').innerHTML = "0 fps";
+
+                            startT = 0;
+                            //로그 생성
+                            plusLog("게임 인터벌 종료");
+                            //--------------------------------------------------------------------------------------
+                            clearInterval(interverQuit);
+                        }
+                    },500);
+                }
+            });
+            //--------------------------------------------------------------------------------------
+
+            //로그 생성
+            plusLog("방향키 설정 완료(w,a,s,d)");
+            plusLog("위치 설정("  + playerX + " , " + playerY +  ") 완료");
+            //--------------------------------------------------------------------------------------
+
+            // 초기화면 로드
+            distanceToWall();
+            distanceToCanvas();
+            makeGraphByDistance();
+            //--------------------------------------------------------------------------------------
+
+            //로그 생성
+            plusLog("초기화면 로드 완료");
+            //--------------------------------------------------------------------------------------
+        }
+        //##########################################################################################
+
+        // 맵과 플레이어 좌표, 시야, 방향키 등의 값을 이용해 게임을 구동시키는 메서드
+        function mapPlay(){
+            if(isGamePlaying === 0) {
+                isGamePlaying = 1;
+                //로그 생성
+                plusLog("게임 인터벌 시작");
+                //--------------------------------------------------------------------------------------
+                playerInterval = setInterval(function () {
+                    intervalIsOver = 0;
+
+                    playerMove(); // 플레이어의 움직임
+                    distanceToWall(); // 벽과의 거리
+                    distanceToCanvas(); // 거리를 캔버스에 표현
+                    makeGraphByDistance(); // 거리 그래프 생성
+                    fpsChecker(); //fps 측정기
+
+                    fps++;
+                    intervalIsOver = 1;
+                }, 10);
+            }
+        }
+        //##########################################################################################
+
+        //플레이어의 움직임을 구현 및 벽 관통 방지 메서드
+        function playerMove(){
+
+            if (keyCounts[UP] === true) {
+                if(Math.round(playerY-Math.sin(sight)) > MAP_SIZE-1 || Math.round(playerY-Math.sin(sight)) < 0 ||
+                    Math.round(playerX-Math.cos(sight)) > MAP_SIZE-1 || Math.round(playerX-Math.cos(sight)) < 0){
+                    //로그 생성
+                    plusLog("벽 충돌 감지");
+                    //--------------------------------------------------------------------------------------
+                } else if (mapArr[Math.round(playerY - Math.sin(sight))][Math.round(playerX - Math.cos(sight))] === 0) {
+                    playerX -= Math.cos(sight);
+                    playerY -= Math.sin(sight);
+                    //로그 생성
+                    plusLog("UP 키 입력");
+                    //--------------------------------------------------------------------------------------
+                } else {
+                    //로그 생성
+                    plusLog("벽 충돌 감지");
+                    //--------------------------------------------------------------------------------------
+                }
+            }
+            if (keyCounts[RIGHT] === true) {
+                sight += Math.PI / 180;
+                //로그 생성
+                plusLog("RIGHT 키 입력");
+                //--------------------------------------------------------------------------------------
+            }
+            if (keyCounts[LEFT] === true) {
+                sight -= Math.PI / 180;
+                //로그 생성
+                plusLog("LEFT 키 입력");
+                //--------------------------------------------------------------------------------------
+            }
+            if (keyCounts[DOWN] === true) {
+                if(Math.round(playerY-Math.sin(sight + Math.PI)) > MAP_SIZE-1 || Math.round(playerY-Math.sin(sight + Math.PI)) < 0 ||
+                    Math.round(playerX-Math.cos(sight + Math.PI)) > MAP_SIZE-1 || Math.round(playerX-Math.cos(sight + Math.PI)) <0){
+                    //로그 생성
+                    plusLog("벽 충돌 감지");
+                    //--------------------------------------------------------------------------------------
+                } else if (mapArr[Math.round(playerY - Math.sin(sight + Math.PI))][Math.round(playerX - Math.cos(sight + Math.PI))] === 0) {
+                    playerX -= Math.cos(sight + Math.PI);
+                    playerY -= Math.sin(sight + Math.PI);
+                    //로그 생성
+                    plusLog("DOWN 키 입력");
+                    //--------------------------------------------------------------------------------------
+                } else {
+                    //로그 생성
+                    plusLog("벽 충돌 감지");
+                    //--------------------------------------------------------------------------------------
+                }
+            }
+
+        }
+        //##########################################################################################
+
+        //캔버스에 3d 화면 출력 메서드
+        function distanceToCanvas() {
+            var canvas3D = document.getElementById('canvas');
+            var colorW = CANVAS_W/viewingDistance.length;
+
+            if (canvas3D.getContext) {
+                var ctx = canvas3D.getContext('2d');
+
+                ctx.fillStyle = 'rgb(0,255,255)';
+                ctx.fillRect(0, 0, CANVAS_W, CANVAS_H/2);
+                ctx.fillStyle = 'rgb(118,118,118)';
+                ctx.fillRect(0, CANVAS_H/2, CANVAS_W, CANVAS_H/2);
+
+                for(var tmp = 0; tmp < viewingDistance.length; tmp++) {
+                    //var dx = -Math.cos(Math.PI/4 + Math.PI/180*tmp) * viewingDistance[tmp];
+                    var dy = MAXIMUM_WALL_HEIGHT/2;
+                    var dz = Math.sin(Math.PI/4 + Math.PI/180*tmp) * viewingDistance[tmp]/10;
+                    if(viewingDistance[tmp] > MAXIMUM_COLOR_SIGHT)
+                        var color = MAXIMUN_DISTANCE_COLOR;
+                    else
+                        var color = Math.ceil(255 - viewingDistance[tmp]*((255-MAXIMUN_DISTANCE_COLOR)/MAXIMUM_COLOR_SIGHT));
+
+                    if( viewingArray[tmp] === 0)
+                        ctx.fillStyle = 'rgb(0,' + color + ',0)';
+                    else if( viewingArray[tmp] === 6)
+                        ctx.fillStyle = 'rgb(20,20,20)';
+                    else {
+                        var cArray = viewingArray[tmp].split(",");
+                        if (mapArr[cArray[0]][cArray[1]] === 1)
+                            ctx.fillStyle = 'rgb(0,' + color + ',0)';
+                        else if (mapArr[cArray[0]][cArray[1]] === 2)
+                            ctx.fillStyle = 'rgb(' + color + ',0,0)';
+                        else if (mapArr[cArray[0]][cArray[1]] === 3)
+                            ctx.fillStyle = 'rgb(0,0,' + color + ')';
+                        else if (mapArr[cArray[0]][cArray[1]] === 4)
+                            ctx.fillStyle = 'rgb(' + color + "," + color + ',0)';
+                        else if (mapArr[cArray[0]][cArray[1]] === 5)
+                            ctx.fillStyle = 'rgb(0,' + color + "," + color + ')';
+                    }
+                    ctx.fillRect(colorW*tmp,CANVAS_H/2 - dy/dz,colorW,dy*2/dz);
+                }
+            }
+        }
+        //##########################################################################################
+
+        // 플레이어 시야를 일정 각도로 잘라 거리를 구해주는 메서드
+        function distanceToWall() {
+            for(tmp = 0; tmp <= VIEWING_ANGLE ; tmp++){
+                var x = playerX;
+                var y = playerY;
+                while(true){
+                    x -= Math.cos(sight - VIEWING_ANGLE_PI/2 + Math.PI/180 * tmp) / 2;
+                    y -= Math.sin(sight - VIEWING_ANGLE_PI/2 + Math.PI/180 * tmp) / 2;
+
+
+                    if(x<0||y<0||x>MAP_SIZE-1||y>MAP_SIZE-1){
+                        var xLength = Math.abs(playerX - x);
+                        var yLength = Math.abs(playerY - y);
+                        var wallLength = Math.sqrt(Math.pow(xLength, 2) + Math.pow(yLength, 2));
+                        //document.write(x + " " + y + " " + tmp + " : " + wallLength + "<br><br>");
+                        viewingDistance[tmp] = wallLength;
+                        viewingArray[tmp] = 0;
+                        break;
+                    }
+                    else{
+                        if((mapArr[Math.floor(y)][Math.floor(x)] !== 0 && mapArr[Math.ceil(y)][Math.ceil(x)] !== 0) ||
+                            (mapArr[Math.ceil(y)][Math.floor(x)] !== 0 && mapArr[Math.floor(y)][Math.ceil(x)] !== 0)){
+                            var xLength = Math.abs(playerX - x);
+                            var yLength = Math.abs(playerY - y);
+                            var wallLength = Math.sqrt(Math.pow(xLength, 2) + Math.pow(yLength, 2));
+                            //document.write(x + " " + y + " " + tmp + " : " + wallLength + "<br><br>");
+                            viewingDistance[tmp] = wallLength;
+                            viewingArray[tmp] = Math.round(y) + "," + Math.round(x);
+                            break;
+                        }
+                        if(x % 1 > 0.75 || x % 1 < 0.25) {
+                            if ((mapArr[Math.ceil(y)][Math.round(x)] !== 0 && mapArr[Math.floor(y)][Math.round(x)] !== 0)) {
+                                var xLength = Math.abs(playerX - x);
+                                var yLength = Math.abs(playerY - y);
+                                var wallLength = Math.sqrt(Math.pow(xLength, 2) + Math.pow(yLength, 2));
+                                //document.write(x + " " + y + " " + tmp + " : " + wallLength + "<br><br>");
+                                viewingDistance[tmp] = wallLength;
+                                viewingArray[tmp] = Math.round(y) + "," + Math.round(x);
+                                break;
+                            }
+                        }
+                        if (y % 1 > 0.75 || y % 1 < 0.25) {
+                            if (mapArr[Math.round(y)][Math.ceil(x)] !== 0 && mapArr[Math.round(y)][Math.floor(x)] !== 0) {
+                                var xLength = Math.abs(playerX - x);
+                                var yLength = Math.abs(playerY - y);
+                                var wallLength = Math.sqrt(Math.pow(xLength, 2) + Math.pow(yLength, 2));
+                                //document.write(x + " " + y + " " + tmp + " : " + wallLength + "<br><br>");
+                                viewingDistance[tmp] = wallLength;
+                                viewingArray[tmp] = Math.round(y) + "," + Math.round(x);
+                                break;
+                            }
+                        }
+                        if(Math.sqrt(Math.pow(Math.abs(playerX - x), 2) + Math.pow(Math.abs(playerY - y), 2)) > MAXIMUM_SIGHT){
+                            viewingDistance[tmp] = MAXIMUM_SIGHT;
+                            viewingArray[tmp] = 6;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        //##########################################################################################
+
+        //trace log 창에 log 추가 시켜주는 메서드
+        function plusLog(logContent){
+            var logUl = document.getElementById('logUl');
+            var logLi = document.createElement('li');
+            logLi.setAttribute('class','logLi');
+            logLi.innerHTML = logContent;
+
+            if(logUl.children.length > liNum){
+                logUl.removeChild(logUl.children[0]);
+            }
+
+            logUl.appendChild(logLi);
+        }
+        //##########################################################################################
+
+        //캔버스에 그래프 생성하는 메서드
+        function makeGraphByDistance() {
+            var canvas = document.getElementById('graphCanvas');
+
+            if (canvas.getContext) {
+                var ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = 'rgb(0,0,0)';
+                ctx.fillRect(0,0,455,200);
+
+                for(var tmp = 0; tmp < viewingDistance.length; tmp++){
+                    var colorW = 5;
+                    var colorH = viewingDistance[tmp]/(MAXIMUM_SIGHT/150);
+                    var color = Math.round(colorH * (255/150));
+                    ctx.fillStyle = 'rgb(' + color + ',0,' + (255-color) + ')';
+
+                    ctx.fillRect(colorW * tmp, 170 - colorH, colorW-1, colorH);
+                }
+            }
+        }
+        //##########################################################################################
+
+        //fps 측정을 해주는 메서드
+        function fpsChecker(){
+            if(startT ===0)
+                startT = new Date().getTime();
+
+            var endT = new Date().getTime();
+
+            if((endT - startT) >= 1000){
+                var fpsV = document.getElementById('fpsViewer');
+                fpsV.innerHTML = fps + " fps";
+                startT = 0;
+                fps = 0;
+            }
+
+        }
+        //##########################################################################################
+    </script>
+
+</head>
+<body id="body" onload="createMap()">
+</body>
+</html>
